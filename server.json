@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.benchoi93/refcheck",
   "title": "refcheck",
-  "description": "Verify academic citations against Crossref, Semantic Scholar, arXiv, Scopus, and IEEE Xplore. Catches hallucinated references, finds real papers, and exports publication-ready BibTeX.",
+  "description": "Verify academic citations against real databases. Catches hallucinated references, exports BibTeX.",
   "repository": {
     "url": "https://github.com/UMN-Choi-Lab/refcheck",
     "source": "github"

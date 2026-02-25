@@ -21,6 +21,10 @@ env/
 *.swp
 *.swo
 
+# Tools
+mcp-publisher.exe
+.mcpregistry_*
+
 # OS
 .DS_Store
 Thumbs.db
