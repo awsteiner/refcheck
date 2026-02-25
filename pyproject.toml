@@ -42,9 +42,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/UMN-Choi-Lab/refcheck"
-Repository = "https://github.com/UMN-Choi-Lab/refcheck"
-Issues = "https://github.com/UMN-Choi-Lab/refcheck/issues"
+Homepage = "https://github.com/benchoi93/refcheck"
+Repository = "https://github.com/benchoi93/refcheck"
+Issues = "https://github.com/benchoi93/refcheck/issues"
 
 [project.scripts]
 refcheck = "refcheck.server:main"

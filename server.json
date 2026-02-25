@@ -4,7 +4,7 @@
   "title": "refcheck",
   "description": "Verify academic citations against real databases. Catches hallucinated references, exports BibTeX.",
   "repository": {
-    "url": "https://github.com/UMN-Choi-Lab/refcheck",
+    "url": "https://github.com/benchoi93/refcheck",
     "source": "github"
   },
   "version": "0.1.0",

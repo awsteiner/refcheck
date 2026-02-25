@@ -36,7 +36,7 @@ pip install refcheck-mcp
 Or install from source:
 
 ```bash
-git clone https://github.com/UMN-Choi-Lab/refcheck.git
+git clone https://github.com/benchoi93/refcheck.git
 cd refcheck
 pip install -e .
 ```
@@ -282,5 +282,5 @@ If you use refcheck in your research workflow, a mention is appreciated:
 
 ```
 refcheck: Academic Reference Verification MCP Server
-https://github.com/UMN-Choi-Lab/refcheck
+https://github.com/benchoi93/refcheck
 ```
