@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/refcheck-mcp)](https://pypi.org/project/refcheck-mcp/)
 [![Python 3.11+](https://img.shields.io/pypi/pyversions/refcheck-mcp)](https://pypi.org/project/refcheck-mcp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/servers/io.github.benchoi93/refcheck)
+[![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.benchoi93/refcheck)
 
 **Academic reference verification for AI assistants.**
 
