@@ -2,6 +2,11 @@
 
 <!-- mcp-name: io.github.benchoi93/refcheck -->
 
+[![PyPI version](https://img.shields.io/pypi/v/refcheck-mcp)](https://pypi.org/project/refcheck-mcp/)
+[![Python 3.11+](https://img.shields.io/pypi/pyversions/refcheck-mcp)](https://pypi.org/project/refcheck-mcp/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCP Registry](https://img.shields.io/badge/MCP-Registry-blue)](https://registry.modelcontextprotocol.io/servers/io.github.benchoi93/refcheck)
+
 **Academic reference verification for AI assistants.**
 
 An [MCP](https://modelcontextprotocol.io/) server that cross-checks academic citations against real publication databases. It catches hallucinated references, finds real papers on a topic, and exports publication-ready BibTeX — all from within Claude Code, Claude Desktop, or any MCP-compatible client.
