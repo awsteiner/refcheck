@@ -9,11 +9,11 @@ from typing import Optional
 import httpx
 from mcp.server.fastmcp import Context, FastMCP
 
-from bibtex import build_bibtex_entry, to_bibtex
-from clients import ClientRegistry
-from config import Settings
-from matching import score_candidate, title_similarity
-from models import (
+from refcheck.bibtex import build_bibtex_entry, to_bibtex
+from refcheck.clients import ClientRegistry
+from refcheck.config import Settings
+from refcheck.matching import score_candidate, title_similarity
+from refcheck.models import (
     BibtexEntry,
     BibtexResult,
     MatchedReference,
@@ -173,7 +173,7 @@ async def _get_corrected_bibtex(paper: PaperMetadata, app: AppContext) -> Option
     if paper.doi:
         crossref = app.registry.get("crossref")
         if crossref:
-            from clients.crossref import CrossrefClient
+            from refcheck.clients.crossref import CrossrefClient
             if isinstance(crossref, CrossrefClient):
                 bib_text = await crossref.get_bibtex(paper.doi)
                 if bib_text:
@@ -361,7 +361,7 @@ async def _bibtex_from_doi(
 
     # Try Crossref native BibTeX (gold standard)
     if crossref:
-        from clients.crossref import CrossrefClient
+        from refcheck.clients.crossref import CrossrefClient
         if isinstance(crossref, CrossrefClient):
             bib_text = await crossref.get_bibtex(doi)
             if bib_text:
@@ -458,7 +458,7 @@ async def _bibtex_from_s2id(
         warnings.append("Semantic Scholar client not available")
         return None, "", warnings
 
-    from clients.semantic_scholar import SemanticScholarClient
+    from refcheck.clients.semantic_scholar import SemanticScholarClient
     if isinstance(s2_client, SemanticScholarClient):
         paper = await s2_client.get_by_id(s2_id)
         if not paper:
@@ -501,5 +501,10 @@ async def _get_paper_by_doi(doi: str, app: AppContext) -> Optional[PaperMetadata
 # Entry point
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def main():
+    """Entry point for the refcheck MCP server."""
     mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()

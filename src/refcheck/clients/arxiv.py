@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 
 import httpx
 
-from models import PaperMetadata
+from refcheck.models import PaperMetadata
 
 _NS = {"atom": "http://www.w3.org/2005/Atom"}
 _BASE_URL = "http://export.arxiv.org/api/query"

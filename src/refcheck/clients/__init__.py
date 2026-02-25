@@ -6,8 +6,8 @@ from typing import Protocol
 
 import httpx
 
-from config import Settings
-from models import PaperMetadata
+from refcheck.config import Settings
+from refcheck.models import PaperMetadata
 
 
 class AcademicClient(Protocol):
@@ -32,22 +32,22 @@ class ClientRegistry:
         self._init_clients()
 
     def _init_clients(self) -> None:
-        from clients.crossref import CrossrefClient
-        from clients.semantic_scholar import SemanticScholarClient
-        from clients.arxiv import ArxivClient
+        from refcheck.clients.crossref import CrossrefClient
+        from refcheck.clients.semantic_scholar import SemanticScholarClient
+        from refcheck.clients.arxiv import ArxivClient
 
         self._clients["crossref"] = CrossrefClient(self._http, self._settings.crossref_email)
         self._clients["semantic_scholar"] = SemanticScholarClient(self._http, self._settings.s2_api_key)
         self._clients["arxiv"] = ArxivClient(self._http)
 
         if self._settings.elsevier_key:
-            from clients.scopus import ScopusClient
+            from refcheck.clients.scopus import ScopusClient
             self._clients["scopus"] = ScopusClient(
                 self._http, self._settings.elsevier_key, self._settings.elsevier_insttoken
             )
 
         if self._settings.ieee_api_key:
-            from clients.ieee import IEEEClient
+            from refcheck.clients.ieee import IEEEClient
             self._clients["ieee"] = IEEEClient(self._http, self._settings.ieee_api_key)
 
     def get(self, name: str) -> AcademicClient | None:

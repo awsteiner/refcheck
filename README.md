@@ -1,5 +1,7 @@
 # refcheck
 
+<!-- mcp-name: io.github.benchoi93/refcheck -->
+
 **Academic reference verification for AI assistants.**
 
 An [MCP](https://modelcontextprotocol.io/) server that cross-checks academic citations against real publication databases. It catches hallucinated references, finds real papers on a topic, and exports publication-ready BibTeX — all from within Claude Code, Claude Desktop, or any MCP-compatible client.
@@ -23,9 +25,15 @@ Large language models frequently hallucinate academic citations: plausible-looki
 ### 1. Install
 
 ```bash
+pip install refcheck-mcp
+```
+
+Or install from source:
+
+```bash
 git clone https://github.com/UMN-Choi-Lab/refcheck.git
 cd refcheck
-pip install -r requirements.txt
+pip install -e .
 ```
 
 **Requirements:** Python 3.11+
@@ -39,7 +47,7 @@ Add to your Claude Code settings (`~/.claude.json`):
   "mcpServers": {
     "refcheck": {
       "command": "python",
-      "args": ["/absolute/path/to/refcheck/server.py"],
+      "args": ["-m", "refcheck"],
       "env": {
         "CROSSREF_EMAIL": "you@university.edu"
       }
@@ -217,19 +225,24 @@ Alternatively, you can set environment variables directly or pass them in the `e
 
 ```
 refcheck/
-├── server.py              # FastMCP entry point, three tool definitions
-├── clients/
-│   ├── __init__.py        # Client protocol & registry
-│   ├── crossref.py        # Crossref: DOI lookup, title search, BibTeX export
-│   ├── semantic_scholar.py # Semantic Scholar: keyword search, paper lookup
-│   ├── arxiv.py           # arXiv: title/keyword search, XML parsing
-│   ├── scopus.py          # Scopus: search with API key (optional)
-│   └── ieee.py            # IEEE Xplore: search with API key (optional)
-├── matching.py            # Fuzzy matching: title, author, year, venue scoring
-├── bibtex.py              # BibTeX generation, formatting, citation keys
-├── models.py              # Pydantic v2 input/output models
-├── config.py              # Environment variable management
-└── requirements.txt       # mcp, httpx, pydantic, rapidfuzz
+├── src/refcheck/              # Python package
+│   ├── __init__.py            # Package version
+│   ├── __main__.py            # python -m refcheck entry point
+│   ├── server.py              # FastMCP server, three tool definitions
+│   ├── clients/
+│   │   ├── __init__.py        # Client protocol & registry
+│   │   ├── crossref.py        # Crossref: DOI lookup, title search, BibTeX export
+│   │   ├── semantic_scholar.py # Semantic Scholar: keyword search, paper lookup
+│   │   ├── arxiv.py           # arXiv: title/keyword search, XML parsing
+│   │   ├── scopus.py          # Scopus: search with API key (optional)
+│   │   └── ieee.py            # IEEE Xplore: search with API key (optional)
+│   ├── matching.py            # Fuzzy matching: title, author, year, venue scoring
+│   ├── bibtex.py              # BibTeX generation, formatting, citation keys
+│   ├── models.py              # Pydantic v2 input/output models
+│   └── config.py              # Environment variable management
+├── pyproject.toml             # Package metadata & dependencies
+├── server.json                # MCP Registry metadata
+└── requirements.txt           # Pinned dependencies (alternative to pyproject.toml)
 ```
 
 **Key design decisions:**

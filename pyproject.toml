@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "refcheck-mcp"
+version = "0.1.0"
+description = "MCP server for academic reference verification against Crossref, Semantic Scholar, arXiv, Scopus, and IEEE Xplore"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Seongjin Choi", email = "chois@umn.edu" },
+]
+keywords = [
+    "mcp",
+    "academic",
+    "references",
+    "bibtex",
+    "citation",
+    "verification",
+    "crossref",
+    "semantic-scholar",
+    "arxiv",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing :: Markup :: LaTeX",
+]
+dependencies = [
+    "mcp>=1.2.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0.0",
+    "rapidfuzz>=3.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/UMN-Choi-Lab/refcheck"
+Repository = "https://github.com/UMN-Choi-Lab/refcheck"
+Issues = "https://github.com/UMN-Choi-Lab/refcheck/issues"
+
+[project.scripts]
+refcheck = "refcheck.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/refcheck"]

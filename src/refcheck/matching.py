@@ -7,7 +7,7 @@ import unicodedata
 
 from rapidfuzz import fuzz
 
-from models import PaperMetadata
+from refcheck.models import PaperMetadata
 
 
 def normalize_text(text: str) -> str:

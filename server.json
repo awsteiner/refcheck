@@ -1,0 +1,58 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.benchoi93/refcheck",
+  "title": "refcheck",
+  "description": "Verify academic citations against Crossref, Semantic Scholar, arXiv, Scopus, and IEEE Xplore. Catches hallucinated references, finds real papers, and exports publication-ready BibTeX.",
+  "repository": {
+    "url": "https://github.com/UMN-Choi-Lab/refcheck",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "refcheck-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CROSSREF_EMAIL",
+          "description": "Your email for Crossref polite pool (faster rate limits)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "S2_API_KEY",
+          "description": "Semantic Scholar API key (free, from semanticscholar.org/product/api)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "ELSEVIER_KEY",
+          "description": "Elsevier/Scopus API key (from dev.elsevier.com)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "ELSEVIER_INSTTOKEN",
+          "description": "Elsevier institutional token for higher rate limits",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "IEEE_API_KEY",
+          "description": "IEEE Xplore API key (from developer.ieee.org)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

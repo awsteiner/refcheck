@@ -6,7 +6,7 @@ import sys
 
 import httpx
 
-from models import PaperMetadata
+from refcheck.models import PaperMetadata
 
 _FIELDS = "title,authors,year,venue,externalIds,abstract,publicationTypes,journal,citationCount,url"
 

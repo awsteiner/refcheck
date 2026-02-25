@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from models import PaperMetadata
+from refcheck.models import PaperMetadata
 
 
 _STOPWORDS = {"a", "an", "the", "on", "in", "for", "of", "and", "with", "to", "is", "are", "at", "by", "from"}

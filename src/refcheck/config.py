@@ -6,8 +6,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env from project root (next to this file)
-load_dotenv(Path(__file__).parent / ".env")
+# Load .env from CWD (where the MCP server is launched), then fallback to repo root
+load_dotenv(Path.cwd() / ".env")
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 
 @dataclass

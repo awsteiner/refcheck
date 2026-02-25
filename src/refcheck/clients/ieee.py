@@ -6,7 +6,7 @@ import sys
 
 import httpx
 
-from models import PaperMetadata
+from refcheck.models import PaperMetadata
 
 _BASE_URL = "https://ieeexploreapi.ieee.org/api/v1/search/articles"
 
