@@ -10,6 +10,7 @@ import httpx
 from mcp.server.fastmcp import Context, FastMCP
 
 from refcheck.bibtex import build_bibtex_entry, to_bibtex
+from refcheck.cache import RefCache
 from refcheck.clients import ClientRegistry
 from refcheck.config import Settings
 from refcheck.matching import score_candidate, title_similarity
@@ -28,15 +29,23 @@ class AppContext:
     http: httpx.AsyncClient
     registry: ClientRegistry
     settings: Settings
+    cache: RefCache
 
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP):
     settings = Settings.from_env()
-    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as http:
-        registry = ClientRegistry(http, settings)
-        ctx = AppContext(http=http, registry=registry, settings=settings)
-        yield ctx
+    cache = RefCache(settings.cache_path)
+    await cache.open()
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as http:
+            registry = ClientRegistry(http, settings)
+            ctx = AppContext(
+                http=http, registry=registry, settings=settings, cache=cache
+            )
+            yield ctx
+    finally:
+        await cache.close()
 
 
 mcp = FastMCP("refcheck", lifespan=app_lifespan)
@@ -81,6 +90,36 @@ async def verify_reference(
     authors = authors or []
     sources_checked: list[str] = []
 
+    # Step 0: Check cache first
+    cached_paper: Optional[PaperMetadata] = None
+    cached_bib: Optional[str] = None
+    if doi:
+        hit = await app.cache.get_paper_by_doi(doi)
+        if hit:
+            cached_paper, cached_bib = hit
+    if not cached_paper and title:
+        hit = await app.cache.get_paper_by_title(title)
+        if hit:
+            cached_paper, cached_bib = hit
+
+    if cached_paper:
+        sources_checked.append("cache")
+        verdict, confidence, discrepancies = score_candidate(
+            title, authors, year, venue, cached_paper
+        )
+        if doi and confidence < 1.0:
+            confidence = max(confidence, 0.90)
+            if verdict == "not_found":
+                verdict = "partial_match"
+        return VerifyResult(
+            verdict=verdict,
+            confidence=confidence,
+            matched_reference=_to_matched_ref(cached_paper),
+            discrepancies=discrepancies,
+            sources_checked=sources_checked,
+            corrected_bibtex=cached_bib,
+        ).model_dump()
+
     # Step 1: DOI lookup (highest confidence path)
     if doi:
         crossref = app.registry.get("crossref")
@@ -98,6 +137,8 @@ async def verify_reference(
                         verdict = "partial_match"
                 # Get corrected BibTeX when paper is found
                 corrected_bib = await _get_corrected_bibtex(paper, app)
+                # Cache the result
+                await app.cache.save_paper(paper, corrected_bib)
                 return VerifyResult(
                     verdict=verdict,
                     confidence=confidence,
@@ -139,6 +180,8 @@ async def verify_reference(
         corrected_bib = None
         if best_paper and best_verdict in ("verified", "partial_match"):
             corrected_bib = await _get_corrected_bibtex(best_paper, app)
+            # Cache the best match
+            await app.cache.save_paper(best_paper, corrected_bib)
 
         return VerifyResult(
             verdict=best_verdict,
@@ -205,6 +248,22 @@ async def search_references(
     letting the AI fabricate them.
     """
     app = _get_ctx(ctx)
+
+    # Check search cache first
+    cached = await app.cache.get_search(
+        query,
+        year_from=year_from,
+        year_to=year_to,
+        databases=databases,
+        max_results=max_results,
+    )
+    if cached is not None:
+        return {
+            "results": cached,
+            "total": len(cached),
+            "sources_queried": ["cache"],
+        }
+
     clients = app.registry.get_search_clients(databases)
 
     # Parallel search across all selected databases
@@ -232,20 +291,34 @@ async def search_references(
     # Trim to max_results
     deduped = deduped[:max_results]
 
+    result_dicts = [
+        SearchResult(
+            title=p.title,
+            authors=p.authors,
+            year=p.year,
+            doi=p.doi,
+            venue=p.venue,
+            abstract=p.abstract,
+            url=p.url,
+            source=p.source,
+        ).model_dump()
+        for p in deduped
+    ]
+
+    # Cache search results and individual papers
+    await app.cache.save_search(
+        query,
+        result_dicts,
+        year_from=year_from,
+        year_to=year_to,
+        databases=databases,
+        max_results=max_results,
+    )
+    for p in deduped:
+        await app.cache.save_paper(p)
+
     return {
-        "results": [
-            SearchResult(
-                title=p.title,
-                authors=p.authors,
-                year=p.year,
-                doi=p.doi,
-                venue=p.venue,
-                abstract=p.abstract,
-                url=p.url,
-                source=p.source,
-            ).model_dump()
-            for p in deduped
-        ],
+        "results": result_dicts,
         "total": len(deduped),
         "sources_queried": sources_queried,
     }
@@ -317,23 +390,62 @@ async def get_bibtex(
     if dois:
         all_dois.extend(dois)
 
-    # Process DOIs
+    # Process DOIs (check cache first)
     if all_dois:
         crossref = app.registry.get("crossref")
         for d in all_dois:
+            # Try cache first
+            cached_bib = await app.cache.get_bibtex_by_doi(d)
+            if cached_bib:
+                import re as _re
+                key_match = _re.search(r"@\w+\{([^,]+),", cached_bib)
+                key = key_match.group(1) if key_match else d
+                type_match = _re.search(r"@(\w+)\{", cached_bib)
+                entry_type = type_match.group(1) if type_match else "article"
+                entries.append(
+                    BibtexEntry(
+                        citation_key=key,
+                        entry_type=entry_type,
+                        fields={"raw_bibtex": "from_cache"},
+                        source_api="cache",
+                    )
+                )
+                bibtex_parts.append(cached_bib)
+                continue
+            # Cache miss — fetch from APIs
             entry, bib, warns = await _bibtex_from_doi(d, app, crossref)
             if entry:
                 entries.append(entry)
                 bibtex_parts.append(bib)
+                # Cache the BibTeX
+                await app.cache.save_bibtex(d, bib)
             warnings.extend(warns)
 
-    # Process title
+    # Process title (check cache first)
     if title:
-        entry, bib, warns = await _bibtex_from_title(title, app)
-        if entry:
-            entries.append(entry)
-            bibtex_parts.append(bib)
-        warnings.extend(warns)
+        cached_hit = await app.cache.get_paper_by_title(title)
+        if cached_hit and cached_hit[1]:
+            paper, cached_bib = cached_hit
+            import re as _re
+            key_match = _re.search(r"@\w+\{([^,]+),", cached_bib)
+            key = key_match.group(1) if key_match else "cached"
+            type_match = _re.search(r"@(\w+)\{", cached_bib)
+            entry_type = type_match.group(1) if type_match else "article"
+            entries.append(
+                BibtexEntry(
+                    citation_key=key,
+                    entry_type=entry_type,
+                    fields={"raw_bibtex": "from_cache"},
+                    source_api="cache",
+                )
+            )
+            bibtex_parts.append(cached_bib)
+        else:
+            entry, bib, warns = await _bibtex_from_title(title, app)
+            if entry:
+                entries.append(entry)
+                bibtex_parts.append(bib)
+            warnings.extend(warns)
 
     # Process Semantic Scholar ID
     if semantic_scholar_id:
@@ -357,6 +469,7 @@ async def _bibtex_from_doi(
     doi: str, app: AppContext, crossref
 ) -> tuple[Optional[BibtexEntry], str, list[str]]:
     """Try Crossref content negotiation first, fall back to metadata construction."""
+    import re
     warnings: list[str] = []
 
     # Try Crossref native BibTeX (gold standard)
@@ -365,8 +478,10 @@ async def _bibtex_from_doi(
         if isinstance(crossref, CrossrefClient):
             bib_text = await crossref.get_bibtex(doi)
             if bib_text:
+                bib_text = bib_text.strip()
+                # Cache the BibTeX
+                await app.cache.save_bibtex(doi, bib_text)
                 # Parse the citation key from the bibtex
-                import re
                 key_match = re.search(r"@\w+\{([^,]+),", bib_text)
                 key = key_match.group(1) if key_match else doi
                 type_match = re.search(r"@(\w+)\{", bib_text)
@@ -378,7 +493,7 @@ async def _bibtex_from_doi(
                         fields={"raw_bibtex": "from_crossref"},
                         source_api="crossref",
                     ),
-                    bib_text.strip(),
+                    bib_text,
                     warnings,
                 )
 
@@ -434,11 +549,15 @@ async def _bibtex_from_title(
         entry, bib, w = await _bibtex_from_doi(best_paper.doi, app, crossref)
         warnings.extend(w)
         if entry:
+            # Cache paper with BibTeX
+            await app.cache.save_paper(best_paper, bib)
             return entry, bib, warnings
 
     # Construct from metadata
     key, entry_type, fields = build_bibtex_entry(best_paper)
     bib_text = to_bibtex(entry_type, key, fields)
+    # Cache paper with constructed BibTeX
+    await app.cache.save_paper(best_paper, bib_text)
 
     return (
         BibtexEntry(citation_key=key, entry_type=entry_type, fields=fields, source_api=best_paper.source),
@@ -471,10 +590,12 @@ async def _bibtex_from_s2id(
             entry, bib, w = await _bibtex_from_doi(paper.doi, app, crossref)
             warnings.extend(w)
             if entry:
+                await app.cache.save_paper(paper, bib)
                 return entry, bib, warnings
 
         key, entry_type, fields = build_bibtex_entry(paper)
         bib_text = to_bibtex(entry_type, key, fields)
+        await app.cache.save_paper(paper, bib_text)
 
         return (
             BibtexEntry(citation_key=key, entry_type=entry_type, fields=fields, source_api="semantic_scholar"),
@@ -495,6 +616,18 @@ async def _get_paper_by_doi(doi: str, app: AppContext) -> Optional[PaperMetadata
             if paper:
                 return paper
     return None
+
+
+# ---------------------------------------------------------------------------
+# Tool 4: cache_stats
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def cache_stats(ctx: Context) -> dict:
+    """Show refcheck cache statistics (cached papers, searches, etc.)."""
+    app = _get_ctx(ctx)
+    return await app.cache.stats()
 
 
 # ---------------------------------------------------------------------------
