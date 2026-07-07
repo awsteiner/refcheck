@@ -1,0 +1,84 @@
+<evaluation>
+  <!--
+    Read-only, verifiable, stable evaluation questions for the refcheck
+    MCP server, following the mcp-builder evaluation format. Each
+    question requires one or more tool calls and has a deterministic,
+    checkable answer. Questions tagged [ADS] require the ADS_API_TOKEN
+    environment variable; all others are keyless.
+
+    The companion runner tests/run_evaluations.py exercises the
+    deterministic subset against the live tools.
+  -->
+  <qa_pair>
+    <question>Use verify_reference to check whether the paper "Attention
+    Is All You Need" by Vaswani et al. (2017) is a real publication.
+    What verdict is returned?</question>
+    <answer>verified (a real paper; matched in Crossref, Semantic
+    Scholar, arXiv, and INSPIRE).</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use verify_reference with the fabricated title "Quantum
+    Neural Transformers for Spatiotemporal Traffic Prediction" by Smith
+    et al. (2023, Nature). What verdict is returned?</question>
+    <answer>not_found (no matching real paper exists).</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use verify_reference on DOI
+    10.1103/PhysRevLett.19.1264. What is the title and lead author of
+    the matched reference?</question>
+    <answer>"A Model of Leptons" by Steven Weinberg (1967), verdict
+    verified.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use get_bibtex for DOI 10.48550/arXiv.1706.03762 and
+    report the BibTeX entry type and citation key.</question>
+    <answer>An @article (or @misc) entry with a citation key beginning
+    "vaswani2017"; BibTeX comes from Crossref native export.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use search_references to find papers on "physics-informed
+    neural networks", limited to 5 results published from 2019 onward.
+    Are all returned results from 2019 or later?</question>
+    <answer>Yes; every result has year &gt;= 2019 and each is a real,
+    deduplicated publication.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use verify_reference to check the high-energy physics
+    paper with arXiv identifier 1207.7214 (the ATLAS Higgs boson
+    discovery). Which databases return a match, and does INSPIRE-HEP
+    appear among the sources checked?</question>
+    <answer>verdict verified; INSPIRE-HEP is among the sources and
+    returns the ATLAS observation-of-a-new-particle paper.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use get_bibtex for the INSPIRE-HEP paper whose title is
+    "Advantages of the Color Octet Gluon Picture" (Fritzsch,
+    Gell-Mann, Leutwyler). What archival identifier appears in the
+    BibTeX?</question>
+    <answer>DOI 10.1016/0370-2693(73)90625-4; the entry is a native
+    BibTeX record from INSPIRE or Crossref.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use verify_reference on the correct title "Deep Residual
+    Learning for Image Recognition" but with the wrong year 2015
+    (the real paper is 2016). What verdict and discrepancy are
+    reported?</question>
+    <answer>partial_match (or verified with a year discrepancy noting
+    claimed 2015 vs found 2016).</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>[ADS] Use search_references restricted to the ADS
+    database for "exoplanet atmosphere characterization". Do the
+    returned results carry ADS bibcodes as their source?</question>
+    <answer>Yes; results have source "ads" and valid 19-character
+    bibcodes.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>[ADS] Use verify_reference on DOI
+    10.1086/305772 and then get_bibtex for the same paper. Does the
+    exported BibTeX correspond to a real astronomy publication with a
+    resolvable ADS bibcode?</question>
+    <answer>Yes; verdict verified and a valid @ARTICLE BibTeX entry is
+    exported for the matched ADS record.</answer>
+  </qa_pair>
+</evaluation>
