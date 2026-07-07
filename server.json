@@ -51,6 +51,13 @@
           "isRequired": false,
           "format": "string",
           "isSecret": true
+        },
+        {
+          "name": "ADS_API_TOKEN",
+          "description": "NASA ADS API token (free, from ui.adsabs.harvard.edu account settings)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
         }
       ]
     }

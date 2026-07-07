@@ -345,7 +345,10 @@ async def _get_paper_by_doi(doi, registry):
 
 
 def _deduplicate(papers):
-    source_priority = {"crossref": 0, "semantic_scholar": 1, "scopus": 2, "ieee": 3, "arxiv": 4}
+    source_priority = {
+        "crossref": 0, "ads": 1, "inspire": 2, "semantic_scholar": 3,
+        "scopus": 4, "ieee": 5, "arxiv": 6,
+    }
     seen_dois: dict[str, PaperMetadata] = {}
     no_doi = []
     for p in papers:

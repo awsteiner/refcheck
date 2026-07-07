@@ -35,10 +35,12 @@ class ClientRegistry:
         from refcheck.clients.crossref import CrossrefClient
         from refcheck.clients.semantic_scholar import SemanticScholarClient
         from refcheck.clients.arxiv import ArxivClient
+        from refcheck.clients.inspire import InspireClient
 
         self._clients["crossref"] = CrossrefClient(self._http, self._settings.crossref_email)
         self._clients["semantic_scholar"] = SemanticScholarClient(self._http, self._settings.s2_api_key)
         self._clients["arxiv"] = ArxivClient(self._http)
+        self._clients["inspire"] = InspireClient(self._http, self._settings.crossref_email)
 
         if self._settings.elsevier_key:
             from refcheck.clients.scopus import ScopusClient
@@ -49,6 +51,10 @@ class ClientRegistry:
         if self._settings.ieee_api_key:
             from refcheck.clients.ieee import IEEEClient
             self._clients["ieee"] = IEEEClient(self._http, self._settings.ieee_api_key)
+
+        if self._settings.ads_api_token:
+            from refcheck.clients.ads import ADSClient
+            self._clients["ads"] = ADSClient(self._http, self._settings.ads_api_token)
 
     def get(self, name: str) -> AcademicClient | None:
         return self._clients.get(name)

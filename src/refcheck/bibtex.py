@@ -108,6 +108,60 @@ def infer_entry_type(paper: PaperMetadata) -> str:
     return "article"
 
 
+def split_bibtex_entries(text: str) -> list[str]:
+    """Split a BibTeX document into raw entry strings.
+
+    Each returned string starts at an ``@`` and spans the full
+    brace-balanced entry body. Whitespace and stray text between
+    entries is ignored. The splitter is brace-aware so entries whose
+    field values contain nested braces are kept intact.
+    """
+    entries: list[str] = []
+    i = 0
+    length = len(text)
+    while i < length:
+        # Locate the next entry start.
+        at = text.find("@", i)
+        if at == -1:
+            break
+        # Locate the opening brace that follows the entry type.
+        brace = text.find("{", at)
+        if brace == -1:
+            break
+        # Walk forward tracking brace depth to find the matching close.
+        depth = 0
+        j = brace
+        while j < length:
+            char = text[j]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    j += 1
+                    break
+            j += 1
+        entries.append(text[at:j].strip())
+        i = j
+    return entries
+
+
+def parse_entry_key(entry: str) -> str | None:
+    """Extract the citation key from a raw BibTeX entry string.
+
+    Returns ``None`` for entries that carry no citation key, such as
+    ``@comment``, ``@string``, and ``@preamble`` blocks, so callers can
+    preserve those verbatim instead of merging them by key.
+    """
+    match = re.match(r"\s*@(\w+)\s*\{\s*([^,\s]+)\s*,", entry)
+    if not match:
+        return None
+    entry_type = match.group(1).lower()
+    if entry_type in {"comment", "string", "preamble"}:
+        return None
+    return match.group(2).strip()
+
+
 def to_bibtex(entry_type: str, key: str, fields: dict[str, str]) -> str:
     """Format a dict of fields into a BibTeX entry string."""
     lines = [f"@{entry_type}{{{key},"]

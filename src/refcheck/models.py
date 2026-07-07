@@ -16,6 +16,8 @@ class PaperMetadata(BaseModel):
     source: str = ""
     arxiv_id: str | None = None
     s2_id: str | None = None
+    bibcode: str | None = None
+    inspire_id: str | None = None
     publication_types: list[str] = Field(default_factory=list)
     citation_count: int | None = None
 
@@ -107,4 +109,19 @@ class BibtexResult(BaseModel):
 
     bibtex: str
     entries: list[BibtexEntry] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+# --- write_bibtex models ---
+
+
+class WriteBibtexResult(BaseModel):
+    """Output of write_bibtex tool."""
+
+    path: str
+    written: bool = False
+    added: list[str] = Field(default_factory=list)
+    updated: list[str] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
+    total_entries: int = 0
     warnings: list[str] = Field(default_factory=list)

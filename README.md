@@ -15,7 +15,7 @@ An [MCP](https://modelcontextprotocol.io/) server that cross-checks academic cit
 
 Large language models frequently hallucinate academic citations: plausible-looking references with fabricated titles, authors, DOIs, or venues. A single hallucinated citation in a paper or grant proposal can undermine credibility.
 
-**refcheck** solves this by giving your AI assistant direct access to Crossref, Semantic Scholar, and arXiv. Every reference it returns is backed by a real database record.
+**refcheck** solves this by giving your AI assistant direct access to Crossref, Semantic Scholar, arXiv, and INSPIRE-HEP (with optional Scopus, IEEE Xplore, and NASA ADS). Every reference it returns is backed by a real database record.
 
 ## What It Does
 
@@ -191,8 +191,10 @@ refcheck queries multiple academic databases in parallel. It works out of the bo
 | **Crossref** | No | 156M+ DOI-registered publications | DOI backbone. Set `CROSSREF_EMAIL` for faster rate limits. |
 | **Semantic Scholar** | No | 200M+ papers | Broadest coverage. Free API key recommended. |
 | **arXiv** | No | 2.5M+ preprints | Essential for recent ML/CS work. 3s rate limit enforced. |
+| **INSPIRE-HEP** | No | High-energy physics literature | Native BibTeX export. Lookup by arXiv id, DOI, or recid. |
 | **Scopus** | Yes | 90M+ records | Elsevier API key + optional institutional token. |
 | **IEEE Xplore** | Yes | IEEE/IET publications | Free tier: 200 requests/day. |
+| **NASA ADS** | Yes | Astronomy & astrophysics | Free token from ui.adsabs.harvard.edu. Native BibTeX export by bibcode. |
 
 The server operates in **degraded mode** when keys are missing — it skips unavailable APIs and reports which sources were checked.
 
@@ -220,6 +222,10 @@ ELSEVIER_INSTTOKEN=
 
 # Optional — free key from https://developer.ieee.org/
 IEEE_API_KEY=
+
+# Optional — free token from https://ui.adsabs.harvard.edu/
+# (account settings -> API Token). Enables NASA ADS (astronomy).
+ADS_API_TOKEN=
 ```
 
 The `.env` file is gitignored. The server loads it automatically on startup via `python-dotenv`.
@@ -239,8 +245,10 @@ refcheck/
 │   │   ├── crossref.py        # Crossref: DOI lookup, title search, BibTeX export
 │   │   ├── semantic_scholar.py # Semantic Scholar: keyword search, paper lookup
 │   │   ├── arxiv.py           # arXiv: title/keyword search, XML parsing
+│   │   ├── inspire.py         # INSPIRE-HEP: HEP search + native BibTeX
 │   │   ├── scopus.py          # Scopus: search with API key (optional)
-│   │   └── ieee.py            # IEEE Xplore: search with API key (optional)
+│   │   ├── ieee.py            # IEEE Xplore: search with API key (optional)
+│   │   └── ads.py             # NASA ADS: astronomy search + BibTeX (token)
 │   ├── matching.py            # Fuzzy matching: title, author, year, venue scoring
 │   ├── bibtex.py              # BibTeX generation, formatting, citation keys
 │   ├── models.py              # Pydantic v2 input/output models

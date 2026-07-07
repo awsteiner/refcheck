@@ -1,15 +1,23 @@
 """FastMCP server entry point — refcheck academic reference verification."""
 
 import asyncio
+import os
 import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import httpx
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.types import ToolAnnotations
 
-from refcheck.bibtex import build_bibtex_entry, to_bibtex
+from refcheck.bibtex import (
+    build_bibtex_entry,
+    parse_entry_key,
+    split_bibtex_entries,
+    to_bibtex,
+)
 from refcheck.cache import RefCache
 from refcheck.clients import ClientRegistry
 from refcheck.config import Settings
@@ -21,6 +29,7 @@ from refcheck.models import (
     PaperMetadata,
     SearchResult,
     VerifyResult,
+    WriteBibtexResult,
 )
 
 
@@ -61,7 +70,13 @@ def _get_ctx(ctx: Context) -> AppContext:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Verify Reference",
+        readOnlyHint=True,
+        openWorldHint=True,
+    )
+)
 async def verify_reference(
     ctx: Context,
     title: Optional[str] = None,
@@ -210,17 +225,40 @@ def _to_matched_ref(paper: PaperMetadata) -> MatchedReference:
     )
 
 
-async def _get_corrected_bibtex(paper: PaperMetadata, app: AppContext) -> Optional[str]:
-    """Get correct BibTeX for a matched paper. Crossref first, then construct."""
-    # Try Crossref content negotiation if DOI available (gold standard)
+async def _native_bibtex(paper: PaperMetadata, app: AppContext) -> Optional[str]:
+    """Fetch publisher-quality BibTeX from a native export endpoint.
+
+    Dispatches on the paper's source and available identifiers rather
+    than isinstance checks: the record's own database (INSPIRE by recid,
+    ADS by bibcode) is preferred, then Crossref content negotiation by
+    DOI. Any client exposing a ``get_bibtex`` method is eligible. Returns
+    None when no native BibTeX is available.
+    """
+    # (source, native identifier) pairs to try, most authoritative first.
+    attempts: list[tuple[str, Optional[str]]] = []
+    if paper.source == "inspire" and paper.inspire_id:
+        attempts.append(("inspire", paper.inspire_id))
+    if paper.source == "ads" and paper.bibcode:
+        attempts.append(("ads", paper.bibcode))
     if paper.doi:
-        crossref = app.registry.get("crossref")
-        if crossref:
-            from refcheck.clients.crossref import CrossrefClient
-            if isinstance(crossref, CrossrefClient):
-                bib_text = await crossref.get_bibtex(paper.doi)
-                if bib_text:
-                    return bib_text.strip()
+        attempts.append(("crossref", paper.doi))
+
+    for source, native_id in attempts:
+        client = app.registry.get(source)
+        get_bibtex = getattr(client, "get_bibtex", None) if client else None
+        if get_bibtex is None or not native_id:
+            continue
+        bib_text = await get_bibtex(native_id)
+        if bib_text:
+            return bib_text.strip()
+    return None
+
+
+async def _get_corrected_bibtex(paper: PaperMetadata, app: AppContext) -> Optional[str]:
+    """Get correct BibTeX for a matched paper. Native export first, then construct."""
+    bib_text = await _native_bibtex(paper, app)
+    if bib_text:
+        return bib_text
 
     # Fallback: construct from metadata
     key, entry_type, fields = build_bibtex_entry(paper)
@@ -232,7 +270,13 @@ async def _get_corrected_bibtex(paper: PaperMetadata, app: AppContext) -> Option
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Search References",
+        readOnlyHint=True,
+        openWorldHint=True,
+    )
+)
 async def search_references(
     ctx: Context,
     query: str,
@@ -327,7 +371,10 @@ async def search_references(
 def _deduplicate(papers: list[PaperMetadata]) -> list[PaperMetadata]:
     """Deduplicate papers by DOI, then by title similarity >= 0.95."""
     # Priority: crossref > semantic_scholar > arxiv > others
-    source_priority = {"crossref": 0, "semantic_scholar": 1, "scopus": 2, "ieee": 3, "arxiv": 4}
+    source_priority = {
+        "crossref": 0, "ads": 1, "inspire": 2, "semantic_scholar": 3,
+        "scopus": 4, "ieee": 5, "arxiv": 6,
+    }
 
     seen_dois: dict[str, PaperMetadata] = {}
     no_doi: list[PaperMetadata] = []
@@ -364,21 +411,40 @@ def _deduplicate(papers: list[PaperMetadata]) -> list[PaperMetadata]:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
-async def get_bibtex(
-    ctx: Context,
+def _bibtex_entry_from_text(bib_text: str, source_api: str) -> BibtexEntry:
+    """Build a BibtexEntry envelope from a raw BibTeX string.
+
+    Parses the citation key and entry type out of the text. The raw
+    BibTeX itself is carried in the sibling ``bibtex`` string, so the
+    ``fields`` dict only records the provenance marker.
+    """
+    import re
+
+    key_match = re.search(r"@\w+\{([^,]+),", bib_text)
+    key = key_match.group(1) if key_match else source_api
+    type_match = re.search(r"@(\w+)\{", bib_text)
+    entry_type = type_match.group(1) if type_match else "article"
+    return BibtexEntry(
+        citation_key=key,
+        entry_type=entry_type,
+        fields={"raw_bibtex": f"from_{source_api}"},
+        source_api=source_api,
+    )
+
+
+async def _collect_bibtex(
+    app: AppContext,
     doi: Optional[str] = None,
     dois: Optional[list[str]] = None,
     title: Optional[str] = None,
     semantic_scholar_id: Optional[str] = None,
-) -> dict:
-    """Generate verified BibTeX entries for academic papers.
+) -> tuple[list[BibtexEntry], list[str], list[str]]:
+    """Resolve identifiers to verified BibTeX, checking the cache first.
 
-    Provide ONE of: a single DOI, a list of DOIs, a paper title, or a Semantic Scholar ID.
-    Returns BibTeX entries ready to paste into a .bib file. Every exported entry corresponds
-    to a real publication — fields are never fabricated.
+    Shared by get_bibtex and write_bibtex. Returns the structured
+    entries, the raw BibTeX text parts, and any warnings. Every entry
+    corresponds to a real publication; fields are never fabricated.
     """
-    app = _get_ctx(ctx)
     entries: list[BibtexEntry] = []
     bibtex_parts: list[str] = []
     warnings: list[str] = []
@@ -455,9 +521,36 @@ async def get_bibtex(
             bibtex_parts.append(bib)
         warnings.extend(warns)
 
+    return entries, bibtex_parts, warnings
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Get BibTeX",
+        readOnlyHint=True,
+        openWorldHint=True,
+    )
+)
+async def get_bibtex(
+    ctx: Context,
+    doi: Optional[str] = None,
+    dois: Optional[list[str]] = None,
+    title: Optional[str] = None,
+    semantic_scholar_id: Optional[str] = None,
+) -> dict:
+    """Generate verified BibTeX entries for academic papers.
+
+    Provide ONE of: a single DOI, a list of DOIs, a paper title, or a Semantic Scholar ID.
+    Returns BibTeX entries ready to paste into a .bib file. Every exported entry corresponds
+    to a real publication — fields are never fabricated.
+    """
+    app = _get_ctx(ctx)
+    entries, bibtex_parts, warnings = await _collect_bibtex(
+        app, doi=doi, dois=dois, title=title,
+        semantic_scholar_id=semantic_scholar_id,
+    )
     if not entries:
         warnings.append("No BibTeX entries could be generated for the given input.")
-
     return BibtexResult(
         bibtex="\n\n".join(bibtex_parts),
         entries=entries,
@@ -543,6 +636,14 @@ async def _bibtex_from_title(
     if best_sim < 0.95:
         warnings.append(f"Title match is approximate ({best_sim:.0%}): '{best_paper.title}'")
 
+    # Prefer the record's own database BibTeX for INSPIRE/ADS records.
+    if best_paper.source in ("inspire", "ads"):
+        native = await _native_bibtex(best_paper, app)
+        if native:
+            entry = _bibtex_entry_from_text(native, best_paper.source)
+            await app.cache.save_paper(best_paper, native)
+            return entry, native, warnings
+
     # If we found a DOI, try Crossref BibTeX first
     if best_paper.doi:
         crossref = app.registry.get("crossref")
@@ -623,11 +724,161 @@ async def _get_paper_by_doi(doi: str, app: AppContext) -> Optional[PaperMetadata
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Cache Statistics",
+        readOnlyHint=True,
+        openWorldHint=False,
+    )
+)
 async def cache_stats(ctx: Context) -> dict:
     """Show refcheck cache statistics (cached papers, searches, etc.)."""
     app = _get_ctx(ctx)
     return await app.cache.stats()
+
+
+# ---------------------------------------------------------------------------
+# Tool 5: write_bibtex
+# ---------------------------------------------------------------------------
+
+
+def _merge_bibtex_text(
+    existing: str, incoming: str, mode: str
+) -> tuple[str, list[str], list[str], list[str], int]:
+    """Merge incoming BibTeX into an existing document by citation key.
+
+    ``mode`` is one of ``merge`` (replace entries whose key already
+    exists and append new ones), ``append`` (add only keys not present),
+    or ``overwrite`` (discard existing content). Returns the merged text
+    along with the added, updated, and skipped keys and the total entry
+    count. Unkeyed blocks such as @comment or @string are preserved.
+    """
+    existing_entries = split_bibtex_entries(existing) if existing else []
+    incoming_entries = split_bibtex_entries(incoming)
+
+    # Ordered list of (key, raw); a None key marks an unkeyed block.
+    ordered: list[tuple[Optional[str], str]] = []
+    index_by_key: dict[str, int] = {}
+    added: list[str] = []
+    updated: list[str] = []
+    skipped: list[str] = []
+
+    if mode != "overwrite":
+        for raw in existing_entries:
+            key = parse_entry_key(raw)
+            if key is not None:
+                index_by_key[key] = len(ordered)
+            ordered.append((key, raw))
+
+    for raw in incoming_entries:
+        key = parse_entry_key(raw)
+        if key is None:
+            # Unkeyed block: always append, never deduplicated.
+            ordered.append((None, raw))
+            continue
+        if key in index_by_key:
+            if mode == "append":
+                skipped.append(key)
+                continue
+            # merge mode: replace the existing entry in place.
+            ordered[index_by_key[key]] = (key, raw)
+            updated.append(key)
+        else:
+            index_by_key[key] = len(ordered)
+            ordered.append((key, raw))
+            added.append(key)
+
+    merged = "\n\n".join(raw for _, raw in ordered)
+    if merged and not merged.endswith("\n"):
+        merged += "\n"
+    total = sum(1 for key, _ in ordered if key is not None)
+    return merged, added, updated, skipped, total
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Write BibTeX File",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+)
+async def write_bibtex(
+    ctx: Context,
+    path: str,
+    bibtex: Optional[str] = None,
+    doi: Optional[str] = None,
+    dois: Optional[list[str]] = None,
+    title: Optional[str] = None,
+    semantic_scholar_id: Optional[str] = None,
+    mode: str = "merge",
+) -> dict:
+    """Write or update verified BibTeX entries in a .bib file on disk.
+
+    Provide the entries either as raw ``bibtex`` text or by identifier
+    (``doi``, ``dois``, ``title``, or ``semantic_scholar_id``), in which
+    case verified BibTeX is generated exactly as get_bibtex would.
+    ``mode`` controls how they combine with any existing file: ``merge``
+    (default) replaces entries whose citation key already exists and
+    appends new ones, ``append`` adds only keys not already present, and
+    ``overwrite`` replaces the whole file. Entries are deduplicated by
+    citation key and the file is written atomically.
+    """
+    app = _get_ctx(ctx)
+    warnings: list[str] = []
+    target = Path(path).expanduser()
+
+    if mode not in {"merge", "append", "overwrite"}:
+        warnings.append(
+            f"Unknown mode '{mode}'; expected merge, append, or overwrite."
+        )
+        return WriteBibtexResult(
+            path=str(target), warnings=warnings
+        ).model_dump()
+
+    # Resolve the incoming BibTeX: explicit text wins, otherwise generate
+    # verified entries from the supplied identifiers.
+    incoming = bibtex.strip() if bibtex else ""
+    if not incoming and (doi or dois or title or semantic_scholar_id):
+        _, bibtex_parts, gen_warnings = await _collect_bibtex(
+            app, doi=doi, dois=dois, title=title,
+            semantic_scholar_id=semantic_scholar_id,
+        )
+        warnings.extend(gen_warnings)
+        incoming = "\n\n".join(bibtex_parts)
+
+    if not incoming:
+        warnings.append(
+            "No BibTeX to write: supply bibtex text or an identifier."
+        )
+        return WriteBibtexResult(
+            path=str(target), warnings=warnings
+        ).model_dump()
+
+    existing = ""
+    if target.exists():
+        existing = target.read_text(encoding="utf-8")
+
+    merged, added, updated, skipped, total = _merge_bibtex_text(
+        existing, incoming, mode
+    )
+
+    # Write atomically: write a sibling temp file, then replace.
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(merged, encoding="utf-8")
+    os.replace(tmp, target)
+
+    return WriteBibtexResult(
+        path=str(target),
+        written=True,
+        added=added,
+        updated=updated,
+        skipped=skipped,
+        total_entries=total,
+        warnings=warnings,
+    ).model_dump()
 
 
 # ---------------------------------------------------------------------------
