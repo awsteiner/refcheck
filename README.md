@@ -33,19 +33,43 @@ Large language models frequently hallucinate academic citations: plausible-looki
 pip install refcheck-mcp
 ```
 
-Or install from source:
+Or install from source into a project virtual environment
+(recommended, and required if you want to use the `run.sh`
+launcher below):
 
 ```bash
 git clone https://github.com/benchoi93/refcheck.git
 cd refcheck
-pip install -e .
+python3 -m venv .venv
+./.venv/bin/pip install -e .
 ```
+
+This one-time setup creates a self-contained `.venv` in the
+repository. The `run.sh` launcher detects and uses it
+automatically, so no global install and no absolute paths are
+needed.
 
 **Requirements:** Python 3.11+
 
 ### 2. Configure Claude Code
 
-Add to your Claude Code settings (`~/.claude.json`):
+If you installed from source with the `.venv` setup above, the
+simplest and most portable option is the bundled `run.sh`
+launcher. It resolves the virtual environment relative to its
+own location, so it contains no absolute paths and works for any
+user from any checkout:
+
+```bash
+claude mcp add refcheck -s user -- /path/to/refcheck/run.sh
+```
+
+Only the path you pass to `claude mcp add` is machine-specific;
+the script's internals stay path-agnostic. API keys are read
+from the `.env` file in the repository (see Configuration below).
+
+Alternatively, add the server directly to your Claude Code
+settings (`~/.claude.json`). This works well when `refcheck-mcp`
+is installed globally (e.g. via `pipx`):
 
 ```json
 {
